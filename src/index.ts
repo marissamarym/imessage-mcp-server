@@ -267,12 +267,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 });
 
 async function main() {
-  const transport = new StdioServerTransport();
-  await server.connect(transport);
-  console.error("iMessage AppleScript MCP server started");
+  try {
+    const transport = new StdioServerTransport();
+    await server.connect(transport);
+    console.error("iMessage AppleScript MCP server started");
+  } catch (error) {
+    console.error("Server error:", error);
+    process.exit(1);
+  }
 }
 
-main().catch((error) => {
-  console.error("Server error:", error);
-  process.exit(1);
-});
+main();
