@@ -1,6 +1,7 @@
 # AppleScript MCP Server
 
 ⚠️ DISCLAIMER - USE AT YOUR OWN RISK ⚠️
+
 This software is provided as-is, without any warranties or guarantees.
 
 An MCP server that uses AppleScript to send iMessages and manage contacts.
