@@ -1,11 +1,11 @@
 {
-  "name": "applescript-mcp-server",
+  "name": "imessage-mcp-server",
   "version": "0.1.0",
-  "description": "An MCP server to interact with AppleScript",
+  "description": "An MCP server to interact with iMessage and Contacts",
   "private": true,
   "type": "module",
   "bin": {
-    "AppleScript MCP Server": "./build/index.js"
+    "iMessage MCP Server": "./build/index.js"
   },
   "files": [
     "build"

@@ -1,4 +1,4 @@
-# AppleScript MCP Server
+# iMessage MCP Server
 
 ⚠️ DISCLAIMER - USE AT YOUR OWN RISK ⚠️
 
@@ -53,9 +53,9 @@ On MacOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
 ```json
 {
   "mcpServers": {
-    "applescript": {
+    "imessage": {
       "command": "node",
-      "args": ["/path/to/applescript-server/build/server.js"]
+      "args": ["/path/to/imessage-server/build/server.js"]
     }
   }
 }
