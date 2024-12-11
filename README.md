@@ -1,5 +1,8 @@
 # AppleScript MCP Server
 
+⚠️ DISCLAIMER - USE AT YOUR OWN RISK ⚠️
+This software is provided as-is, without any warranties or guarantees.
+
 An MCP server that uses AppleScript to send iMessages and manage contacts.
 
 This server uses AppleScript to interface with macOS Messages and Contacts apps through the Model Context Protocol (MCP). It wraps AppleScript commands in a TypeScript server to allow you to:
