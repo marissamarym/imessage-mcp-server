@@ -1,12 +1,10 @@
 #!/usr/bin/env node
 
 /**
- * This is a template MCP server that implements a simple notes system.
- * It demonstrates core MCP concepts like resources and tools by allowing:
- * - Listing notes as resources
- * - Reading individual notes
- * - Creating new notes via a tool
- * - Summarizing all notes via a prompt
+ * An MCP server that uses AppleScript to send iMessages and interact with Contacts.
+ * It provides tools to:
+ * - Send iMessages through the Messages app
+ * - View contacts through the Contacts app
  */
 
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
@@ -16,137 +14,251 @@ import {
   ListResourcesRequestSchema,
   ListToolsRequestSchema,
   ReadResourceRequestSchema,
-  ListPromptsRequestSchema,
-  GetPromptRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
+import { execFile } from "child_process";
+import { promisify } from "util";
 
-/**
- * Type alias for a note object.
- */
-type Note = { title: string; content: string };
+const execFileAsync = promisify(execFile);
 
-/**
- * Simple in-memory storage for notes.
- * In a real implementation, this would likely be backed by a database.
- */
-const notes: { [id: string]: Note } = {
-  "1": { title: "First Note", content: "This is note 1" },
-  "2": { title: "Second Note", content: "This is note 2" },
-};
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (typeof error === "string") return error;
+  return String(error);
+}
 
-/**
- * Create an MCP server with capabilities for resources (to list/read notes),
- * tools (to create new notes), and prompts (to summarize notes).
- */
+async function runAppleScript(script: string): Promise<string> {
+  try {
+    const { stdout } = await execFileAsync("osascript", ["-e", script]);
+    return stdout.trim();
+  } catch (error) {
+    throw new Error(`AppleScript error: ${getErrorMessage(error)}`);
+  }
+}
+
 const server = new Server(
   {
-    name: "AppleScript MCP Server",
+    name: "iMessage-AppleScript-Server",
     version: "0.1.0",
   },
   {
     capabilities: {
       resources: {},
       tools: {},
-      prompts: {},
     },
   }
 );
 
-/**
- * Handler for listing available notes as resources.
- * Each note is exposed as a resource with:
- * - A note:// URI scheme
- * - Plain text MIME type
- * - Human readable name and description (now including the note title)
- */
 server.setRequestHandler(ListResourcesRequestSchema, async () => {
   return {
-    resources: Object.entries(notes).map(([id, note]) => ({
-      uri: `note:///${id}`,
-      mimeType: "text/plain",
-      name: note.title,
-      description: `A text note: ${note.title}`,
-    })),
-  };
-});
-
-/**
- * Handler for reading the contents of a specific note.
- * Takes a note:// URI and returns the note content as plain text.
- */
-server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
-  const url = new URL(request.params.uri);
-  const id = url.pathname.replace(/^\//, "");
-  const note = notes[id];
-
-  if (!note) {
-    throw new Error(`Note ${id} not found`);
-  }
-
-  return {
-    contents: [
+    resources: [
       {
-        uri: request.params.uri,
-        mimeType: "text/plain",
-        text: note.content,
+        uri: "contacts://all",
+        mimeType: "application/json",
+        name: "All Contacts",
+        description: "List of all contacts from the Contacts app",
       },
     ],
   };
 });
 
-/**
- * Handler that lists available tools.
- * Exposes a single "create_note" tool that lets clients create new notes.
- */
+server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
+  if (request.params.uri !== "contacts://all") {
+    throw new Error(`Unknown resource: ${request.params.uri}`);
+  }
+
+  const script = `
+    tell application "Contacts"
+      set output to "["
+      repeat with p in every person
+        if output is not "[" then
+          set output to output & ","
+        end if
+        set output to output & "{"
+        set output to output & "\\"name\\":\\"" & (name of p as text) & "\\","
+        set output to output & "\\"phones\\":["
+        set firstPhone to true
+        repeat with ph in phones of p
+          if not firstPhone then
+            set output to output & ","
+          end if
+          set output to output & "\\"" & (value of ph) & "\\""
+          set firstPhone to false
+        end repeat
+        set output to output & "],"
+        set output to output & "\\"emails\\":["
+        set firstEmail to true
+        repeat with em in emails of p
+          if not firstEmail then
+            set output to output & ","
+          end if
+          set output to output & "\\"" & (value of em) & "\\""
+          set firstEmail to false
+        end repeat
+        set output to output & "]"
+        set output to output & "}"
+      end repeat
+      return output & "]"
+    end tell
+  `;
+
+  try {
+    const contacts = await runAppleScript(script);
+    return {
+      contents: [
+        {
+          uri: request.params.uri,
+          mimeType: "application/json",
+          text: contacts,
+        },
+      ],
+    };
+  } catch (error) {
+    throw new Error(`Failed to fetch contacts: ${getErrorMessage(error)}`);
+  }
+});
+
 server.setRequestHandler(ListToolsRequestSchema, async () => {
   return {
     tools: [
       {
-        name: "create_note",
-        description: "Create a new note",
+        name: "send_imessage",
+        description: "Send an iMessage using Messages app",
         inputSchema: {
           type: "object",
           properties: {
-            title: {
+            recipient: {
               type: "string",
-              description: "Title of the note",
+              description: "Phone number or email of the recipient",
             },
-            content: {
+            message: {
               type: "string",
-              description: "Text content of the note",
+              description: "Message content to send",
             },
           },
-          required: ["title", "content"],
+          required: ["recipient", "message"],
+        },
+      },
+      {
+        name: "search_contacts",
+        description: "Search contacts by name, phone, or email",
+        inputSchema: {
+          type: "object",
+          properties: {
+            query: {
+              type: "string",
+              description: "Search query",
+            },
+          },
+          required: ["query"],
         },
       },
     ],
   };
 });
 
-/**
- * Handler for the create_note tool.
- * Creates a new note with the provided title and content, and returns success message.
- */
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
   switch (request.params.name) {
-    case "create_note": {
-      const title = String(request.params.arguments?.title);
-      const content = String(request.params.arguments?.content);
-      if (!title || !content) {
-        throw new Error("Title and content are required");
+    case "send_imessage": {
+      const recipient = String(request.params.arguments?.recipient);
+      const message = String(request.params.arguments?.message);
+
+      if (!recipient || !message) {
+        throw new Error("Recipient and message are required");
       }
 
-      const id = String(Object.keys(notes).length + 1);
-      notes[id] = { title, content };
+      const escapedMessage = message.replace(/"/g, '\\"');
+      const script = `
+        tell application "Messages"
+          send "${escapedMessage}" to buddy "${recipient}" of (service 1 whose service type = iMessage)
+        end tell
+      `;
 
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Created note ${id}: ${title}`,
-          },
-        ],
-      };
+      try {
+        await runAppleScript(script);
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Message sent successfully to ${recipient}`,
+            },
+          ],
+        };
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Failed to send message: ${getErrorMessage(error)}`,
+            },
+          ],
+          isError: true,
+        };
+      }
+    }
+
+    case "search_contacts": {
+      const query = String(request.params.arguments?.query).toLowerCase();
+
+      const script = `
+        tell application "Contacts"
+          set output to "["
+          set isFirst to true
+          repeat with p in every person
+            if ((name of p as text) contains "${query}") then
+              if not isFirst then
+                set output to output & ","
+              end if
+              set output to output & "{"
+              set output to output & "\\"name\\":\\"" & (name of p as text) & "\\","
+              set output to output & "\\"phones\\":["
+              set firstPhone to true
+              repeat with ph in phones of p
+                if not firstPhone then
+                  set output to output & ","
+                end if
+                set output to output & "\\"" & (value of ph) & "\\""
+                set firstPhone to false
+              end repeat
+              set output to output & "],"
+              set output to output & "\\"emails\\":["
+              set firstEmail to true
+              repeat with em in emails of p
+                if not firstEmail then
+                  set output to output & ","
+                end if
+                set output to output & "\\"" & (value of em) & "\\""
+                set firstEmail to false
+              end repeat
+              set output to output & "]"
+              set output to output & "}"
+              set isFirst to false
+            end if
+          end repeat
+          return output & "]"
+        end tell
+      `;
+
+      try {
+        const results = await runAppleScript(script);
+        return {
+          content: [
+            {
+              type: "text",
+              text: results,
+            },
+          ],
+        };
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Search failed: ${getErrorMessage(error)}`,
+            },
+          ],
+          isError: true,
+        };
+      }
     }
 
     default:
@@ -154,70 +266,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   }
 });
 
-/**
- * Handler that lists available prompts.
- * Exposes a single "summarize_notes" prompt that summarizes all notes.
- */
-server.setRequestHandler(ListPromptsRequestSchema, async () => {
-  return {
-    prompts: [
-      {
-        name: "summarize_notes",
-        description: "Summarize all notes",
-      },
-    ],
-  };
-});
-
-/**
- * Handler for the summarize_notes prompt.
- * Returns a prompt that requests summarization of all notes, with the notes' contents embedded as resources.
- */
-server.setRequestHandler(GetPromptRequestSchema, async (request) => {
-  if (request.params.name !== "summarize_notes") {
-    throw new Error("Unknown prompt");
-  }
-
-  const embeddedNotes = Object.entries(notes).map(([id, note]) => ({
-    type: "resource" as const,
-    resource: {
-      uri: `note:///${id}`,
-      mimeType: "text/plain",
-      text: note.content,
-    },
-  }));
-
-  return {
-    messages: [
-      {
-        role: "user",
-        content: {
-          type: "text",
-          text: "Please summarize the following notes:",
-        },
-      },
-      ...embeddedNotes.map((note) => ({
-        role: "user" as const,
-        content: note,
-      })),
-      {
-        role: "user",
-        content: {
-          type: "text",
-          text: "Provide a concise summary of all the notes above.",
-        },
-      },
-    ],
-  };
-});
-
-/**
- * Start the server using stdio transport.
- * This allows the server to communicate via standard input/output streams.
- */
 async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
+  console.error("iMessage AppleScript MCP server started");
 }
 
 main().catch((error) => {

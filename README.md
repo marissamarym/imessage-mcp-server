@@ -1,70 +1,107 @@
-# AppleScript MCP Server MCP Server
+# AppleScript MCP Server
 
-An MCP server to interact with AppleScript
+An MCP server that uses AppleScript to send iMessages and manage contacts.
 
-This is a TypeScript-based MCP server that implements a simple notes system. It demonstrates core MCP concepts by providing:
+This server uses AppleScript to interface with macOS Messages and Contacts apps through the Model Context Protocol (MCP). It wraps AppleScript commands in a TypeScript server to allow you to:
 
-- Resources representing text notes with URIs and metadata
-- Tools for creating new notes
-- Prompts for generating summaries of notes
+- View and search your contacts
+- Send iMessages to contacts or phone numbers
+- Get confirmation when messages are sent
 
 ## Features
 
 ### Resources
-- List and access notes via `note://` URIs
-- Each note has a title, content and metadata
-- Plain text mime type for simple content access
+
+- Access your contacts via `contacts://all`
+- View contact details including names, phone numbers, and email addresses
+- All data stays local on your machine
 
 ### Tools
-- `create_note` - Create new text notes
-  - Takes title and content as required parameters
-  - Stores note in server state
 
-### Prompts
-- `summarize_notes` - Generate a summary of all stored notes
-  - Includes all note contents as embedded resources
-  - Returns structured prompt for LLM summarization
+- `search_contacts` - Find contacts by name, phone, or email
 
-## Development
+  - Takes a search query and returns matching contacts
+  - Searches across names, phone numbers, and email addresses
 
-Install dependencies:
+- `send_message` - Send an iMessage
+  - Takes recipient (phone/email) and message content
+  - Sends through your local Messages app
+  - Returns confirmation or error details
+
+## Installation
+
+1. Install dependencies:
+
 ```bash
 npm install
 ```
 
-Build the server:
+2. Build the server:
+
 ```bash
 npm run build
 ```
 
-For development with auto-rebuild:
-```bash
-npm run watch
-```
-
-## Installation
-
-To use with Claude Desktop, add the server config:
+3. Configure Claude Desktop to use the server:
 
 On MacOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
-On Windows: `%APPDATA%/Claude/claude_desktop_config.json`
 
 ```json
 {
   "mcpServers": {
-    "AppleScript MCP Server": {
-      "command": "/path/to/AppleScript MCP Server/build/index.js"
+    "applescript": {
+      "command": "node",
+      "args": ["/path/to/applescript-server/build/server.js"]
     }
   }
 }
 ```
 
-### Debugging
+4. Restart Claude Desktop
 
-Since MCP servers communicate over stdio, debugging can be challenging. We recommend using the [MCP Inspector](https://github.com/modelcontextprotocol/inspector), which is available as a package script:
+5. Grant permissions when prompted for:
+   - Contacts access
+   - Messages access
+
+## Usage
+
+Once installed, you can talk to Claude Desktop naturally:
+
+- "Show me my contacts"
+- "Search for contacts named Marissa"
+- "Send a message to 555-0123 saying I'll be there in 10 minutes"
+- "Send Alice an iMessage asking if we're still on for lunch"
+
+## Security Notes
+
+- All operations happen locally on your machine
+- No contact or message data is sent to external servers
+- The server requires macOS permissions for Contacts and Messages access
+- Messages are sent through your iMessage account
+
+## Development
+
+For development and debugging, use the MCP Inspector:
 
 ```bash
-npm run inspector
+npx @modelcontextprotocol/inspector node build/server.js
 ```
 
-The Inspector will provide a URL to access debugging tools in your browser.
+## Requirements
+
+- macOS (for Messages and Contacts integration)
+- Node.js 18 or higher
+- Claude Desktop
+- Active iMessage account
+
+## Troubleshooting
+
+If messages aren't sending:
+
+1. Check Messages app is signed in
+2. Verify permissions are granted
+3. Look for errors in Claude Desktop logs:
+
+```bash
+tail -f ~/Library/Logs/Claude/mcp*.log
+```
